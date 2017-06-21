@@ -26,8 +26,10 @@ public class DataEmitter implements Runnable {
     		kinesisClient = AmazonKinesisClientBuilder.standard().withRegion(Regions.US_WEST_2).build();
     		eventType = EmitterConfiguration.getProperty("eventType");
     		infiniteLoop = Boolean.parseBoolean(EmitterConfiguration.getProperty("loopIndefinitely"));
+    		if(!infiniteLoop)
+    			records = Integer.parseInt(EmitterConfiguration.getProperty("numRecords"));
     		LOG.info("Started Kinesis Client");
-    		LOG.info("Infinite Loop Setting is: " + infiniteLoop);    		
+    				
 		}catch (Exception e){
 			LOG.error("Error Loading Kinesis Client: " + e.getMessage());
 		}
@@ -36,9 +38,14 @@ public class DataEmitter implements Runnable {
     
 	@Override
 	public void run() {
-		// TODO Auto-generated method stub
-		do{
-			emitData(eventType);
+		
+		int lines = 0;
+		
+		do{			
+			++lines;
+			infiniteLoop = lines==records?false:true;
+			emitData(eventType, lines);
+				
 			try{
 				Thread.sleep(100);
 			}catch(InterruptedException ie){
@@ -48,7 +55,7 @@ public class DataEmitter implements Runnable {
 
 	}
 	
-	private void emitData(String eventType){
+	private void emitData(String eventType, int lines){
 		
 		String record = "";
 		String partitionkey = "";
@@ -60,14 +67,25 @@ public class DataEmitter implements Runnable {
 			partitionkey = smpe.getEventId();
 		}
 		
+		if(eventType.equalsIgnoreCase("RTSAEvent"))
+		{
+			SampleRTSAEvent smpe = new SampleRTSAEvent();
+			record = smpe.toJson();
+			partitionkey = smpe.getTimestamp().toString();
+		}
+		
 		PutRecordRequest putRecordRequest = new PutRecordRequest();
 		putRecordRequest.setStreamName(EmitterConfiguration.getProperty("kinesisStreamName"));
 		putRecordRequest.setData(ByteBuffer.wrap(record.getBytes()));
 		putRecordRequest.setPartitionKey(partitionkey);
 		
 		kinesisClient.putRecord(putRecordRequest);
+		try{
+			LOG.info("Added " + lines + " records to Stream: " + putRecordRequest.getStreamName() + " with data: " + new String(putRecordRequest.getData().array(), "UTF-8"));
+		}catch(Exception e){
+			LOG.info("Added " + lines + " records to Stream: " + putRecordRequest.getStreamName());
+		}
         
-		
 	}
 	
 	@Override
